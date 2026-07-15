@@ -1,0 +1,46 @@
+name: Firmware Release
+
+# Builds the ESP32-2432S028R firmware as an app-only .bin and publishes it as
+# a GitHub Release asset on version tags (e.g. v0.1.0), so it can be
+# installed through bmorcelli Launcher's WebUI/SD card flow. See:
+#   openspec/changes/add-macropad-mvp/specs/firmware-release-packaging/spec.md
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Run native unit tests
+        run: pio test -e native
+
+      - name: Build firmware
+        run: pio run -e esp32-2432S028R
+
+      - name: Locate app-only binary
+        id: locate
+        run: |
+          BIN_PATH=".pio/build/esp32-2432S028R/firmware.bin"
+          if [ ! -f "$BIN_PATH" ]; then
+            echo "Expected firmware binary not found at $BIN_PATH" >&2
+            exit 1
+          fi
+          cp "$BIN_PATH" "streamdeck-cyd-${{ github.ref_name }}.bin"
+          echo "asset_path=streamdeck-cyd-${{ github.ref_name }}.bin" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.locate.outputs.asset_path }}

@@ -1,0 +1,68 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+context: |
+  Project: a Stream-Deck-like macro pad built on the "CYD" (Cheap Yellow Display)
+  ESP32 board, distributed as firmware installable via the bmorcelli Launcher
+  (github.com/bmorcelli/Launcher), a boot-menu/flasher app for ESP32 boards.
+
+  Target hardware: ESP32-2432S028R specifically (classic ESP32-WROOM-32, no
+  native USB device controller, 2.8" 240x320 ILI9341 TFT, resistive touch via
+  XPT2046 over SPI, WiFi + Bluetooth v4.2 Classic/BLE, 4MB flash). Other CYD
+  variants are out of scope unless stated otherwise.
+
+  Firmware tech stack: PlatformIO + Arduino framework, TFT_eSPI for display,
+  XPT2046 touch driver, an ESP32 BLE HID keyboard/media-key library
+  (e.g. ESP32-BLE-Keyboard/ESP32-BLE-Combo or ESP-IDF's esp_hidd), LittleFS
+  for on-device config persistence. Firmware builds to a standalone .bin
+  compatible with bmorcelli Launcher (no shared runtime/SDK dependency on
+  Launcher itself - it just boots whatever valid ESP32 image is installed).
+
+  Webapp tech stack: a static site (HTML/JS, no backend) deployable to
+  GitHub Pages, using the Web Bluetooth API to connect directly to the
+  device over a custom GATT service for pushing/pulling button and layer
+  configuration. Web Bluetooth only works in Chromium-based browsers
+  (Chrome/Edge/Android) - this is an accepted trade-off, not a bug.
+
+  Core architecture decisions (do not relitigate without explicit user
+  direction):
+  - BLE HID only, no host-side companion app. Buttons emit keystrokes/media
+    keys; the user is responsible for binding those to real OS actions
+    (Shortcuts/Automator, Hammerspoon, AutoHotkey, PowerToys, etc.).
+  - Layer/folder navigation (buttons that open a nested set of buttons) is
+    handled entirely on-device - the host never sees layer state, only the
+    keystroke from whichever leaf button was eventually pressed.
+  - Exactly 6 buttons shown at a time (label + background color only, no
+    icon/image upload in v1).
+  - Config lives on-device in LittleFS so the device works standalone
+    without the webapp connected; the webapp is only needed to edit config.
+  - Deferred to a later phase (nice-to-have, not v1): mirroring config to an
+    SD card as a backup/recovery source in case a firmware reflash wipes the
+    LittleFS config partition (unconfirmed whether bmorcelli Launcher
+    preserves it across reinstalls). Revisit if this turns out to matter in
+    practice.
+  - Deferred to a later phase (phase 2): image/icon buttons instead of (or in
+    addition to) label+color. Likely approach: the webapp converts an
+    uploaded image client-side to a small fixed-size raw bitmap in the exact
+    pixel format the device expects (e.g. RGB565), so firmware never needs a
+    PNG/JPEG decoder - it just blits raw bytes. Needs its own change once
+    add-macropad-mvp's layer/button model and config protocol exist to build
+    on.
+  - No OTA, no companion app, no wired USB HID, no multi-device sync.
+  - Test scope: automated unit tests cover pure logic only - firmware config
+    parsing/structural validation and BLE chunk-reassembly bookkeeping (via
+    PlatformIO's native/Unity test environment, no hardware required), and the
+    webapp's layer-tree validation (target-exists, delete-blocked-when-referenced)
+    via a lightweight JS test runner. Display, touch, BLE HID, and Web Bluetooth
+    behavior are verified manually on real hardware/browsers, not automated.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
