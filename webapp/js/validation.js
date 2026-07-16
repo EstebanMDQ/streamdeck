@@ -55,3 +55,18 @@ export function canDeleteLayer(config, layerId) {
   }
   return { ok: true, referencedBy: [] };
 }
+
+// Every distinct icon id referenced by any slot across every layer -
+// webapp-ble-sync: used to know which icons to pull after connecting and
+// which to upload before pushing.
+export function collectIconIds(config) {
+  const ids = new Set();
+  for (const layer of Object.values(config.layers)) {
+    for (const slot of layer.buttons) {
+      if (slot && slot.icon) {
+        ids.add(slot.icon);
+      }
+    }
+  }
+  return ids;
+}

@@ -18,6 +18,15 @@ header {
   gap: var(--gap);
 }
 
+.file-input-label {
+  display: inline-block;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+
 .banner {
   background: #7a3b3b;
   color: white;
@@ -58,6 +67,41 @@ header {
 .layer-tab.delete-layer {
   border-color: #e76f51;
   color: #e76f51;
+}
+.layer-tab.new-layer-template {
+  border-style: dashed;
+  border-color: #457b9d;
+  color: #457b9d;
+}
+
+.template-picker {
+  border: 1px solid #457b9d;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.template-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid #888;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.template-option div {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  margin-top: 0.2rem;
+}
+
+.template-picker ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
 }
 
 .button-grid {

@@ -6,6 +6,7 @@ import {
   isPushValid,
   findLayerReferences,
   canDeleteLayer,
+  collectIconIds,
 } from "../js/validation.js";
 
 function sampleConfig() {
@@ -92,4 +93,34 @@ test("canDeleteLayer: allows deleting an unreferenced non-root layer", () => {
   config.layers["orphan"] = { buttons: new Array(6).fill(null) };
   const result = canDeleteLayer(config, "orphan");
   assert.equal(result.ok, true);
+});
+
+test("collectIconIds: collects every distinct icon id across all layers", () => {
+  const config = sampleConfig();
+  config.layers.root.buttons[1] = {
+    label: "Icon A",
+    color: "#000000",
+    icon: "abc123",
+    action: { type: "key", usage: 4, modifiers: [] },
+  };
+  config.layers["edit-layer"].buttons[0] = {
+    label: "Icon B",
+    color: "#111111",
+    icon: "def456",
+    action: { type: "key", usage: 5, modifiers: [] },
+  };
+  config.layers["edit-layer"].buttons[1] = {
+    label: "Reuses Icon A",
+    color: "#222222",
+    icon: "abc123",
+    action: { type: "key", usage: 6, modifiers: [] },
+  };
+
+  const ids = collectIconIds(config);
+  assert.deepEqual([...ids].sort(), ["abc123", "def456"]);
+});
+
+test("collectIconIds: empty when no slot has an icon", () => {
+  const ids = collectIconIds(sampleConfig());
+  assert.equal(ids.size, 0);
 });

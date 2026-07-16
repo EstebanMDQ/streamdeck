@@ -16,6 +16,13 @@ export const CONFIG_TRANSFER_UUID = "8f8c1702-4a2f-4f1a-9d1e-9f7f6c2b1a01";
 export const CONFIG_DUMP_UUID = "8f8c1703-4a2f-4f1a-9d1e-9f7f6c2b1a01";
 export const CONFIG_STATUS_UUID = "8f8c1704-4a2f-4f1a-9d1e-9f7f6c2b1a01";
 
+// Icon transfer characteristics (macropad-icon-assets) - same service,
+// same custom-UUID pattern. Must match src/ble/ConfigService.cpp exactly.
+export const ICON_TRANSFER_ID_UUID = "8f8c1705-4a2f-4f1a-9d1e-9f7f6c2b1a01";
+export const ICON_UPLOAD_UUID = "8f8c1706-4a2f-4f1a-9d1e-9f7f6c2b1a01";
+export const ICON_DOWNLOAD_UUID = "8f8c1707-4a2f-4f1a-9d1e-9f7f6c2b1a01";
+export const ICON_STATUS_UUID = "8f8c1708-4a2f-4f1a-9d1e-9f7f6c2b1a01";
+
 // Must stay <= the firmware's kMaxChunkPayload (see ConfigService.cpp) and
 // comfortably under a typical negotiated BLE MTU.
 const MAX_CHUNK_PAYLOAD = 180;
@@ -31,6 +38,10 @@ export class DeviceConnection {
     this.transferChar = null;
     this.dumpChar = null;
     this.statusChar = null;
+    this.iconTransferIdChar = null;
+    this.iconUploadChar = null;
+    this.iconDownloadChar = null;
+    this.iconStatusChar = null;
   }
 
   get isConnected() {
@@ -55,6 +66,13 @@ export class DeviceConnection {
     this.transferChar = await service.getCharacteristic(CONFIG_TRANSFER_UUID);
     this.dumpChar = await service.getCharacteristic(CONFIG_DUMP_UUID);
     this.statusChar = await service.getCharacteristic(CONFIG_STATUS_UUID);
+    this.iconTransferIdChar = await service.getCharacteristic(
+      ICON_TRANSFER_ID_UUID,
+    );
+    this.iconUploadChar = await service.getCharacteristic(ICON_UPLOAD_UUID);
+    this.iconDownloadChar =
+      await service.getCharacteristic(ICON_DOWNLOAD_UUID);
+    this.iconStatusChar = await service.getCharacteristic(ICON_STATUS_UUID);
   }
 
   disconnect() {
@@ -137,5 +155,76 @@ export class DeviceConnection {
     }
 
     return this.readStatus(); // { firmwareVersion, schemaVersion, lastApplyResult }
+  }
+
+  async readIconStatus() {
+    const value = await this.iconStatusChar.readValue();
+    const text = new TextDecoder().decode(value);
+    return JSON.parse(text); // { lastResult }
+  }
+
+  // webapp-ble-sync: "Webapp uploads new icon bitmaps before pushing the
+  // config that references them". Sets the transfer target via
+  // IconTransferId, writes the bitmap in chunks via IconUpload, then
+  // confirms via IconStatus rather than assuming success from chunk
+  // delivery alone.
+  async uploadIcon(iconId, bytes) {
+    const idBytes = new TextEncoder().encode(iconId);
+    await this.iconTransferIdChar.writeValueWithResponse(idBytes);
+
+    const chunks = encodeChunks(bytes, MAX_CHUNK_PAYLOAD);
+    for (const chunk of chunks) {
+      await this.iconUploadChar.writeValueWithResponse(chunk);
+    }
+
+    const status = await this.readIconStatus();
+    return status.lastResult; // "uploaded" | "rejected_wrong_size"
+  }
+
+  // webapp-ble-sync: "Webapp pulls bitmaps for icons already referenced by a
+  // device's configuration". Mirrors pullConfig()'s subscribe-then-read
+  // pattern, but against IconDownload/IconTransferId. Resolves to `null` on
+  // a zero-length response (icon not found on-device).
+  async downloadIcon(iconId) {
+    const idBytes = new TextEncoder().encode(iconId);
+    await this.iconTransferIdChar.writeValueWithResponse(idBytes);
+
+    const reassembler = new ChunkReassembler();
+
+    return new Promise((resolve, reject) => {
+      const onNotify = (event) => {
+        const bytes = new Uint8Array(event.target.value.buffer);
+        const status = reassembler.feed(bytes);
+        if (status === ChunkStatus.COMPLETE) {
+          cleanup();
+          const payload = reassembler.payloadBytes();
+          resolve(payload.length === 0 ? null : payload);
+        } else if (status === ChunkStatus.REJECTED) {
+          cleanup();
+          reject(new Error("Device sent an unexpected icon download chunk"));
+        }
+      };
+
+      const cleanup = () => {
+        this.iconDownloadChar.removeEventListener(
+          "characteristicvaluechanged",
+          onNotify,
+        );
+      };
+
+      this.iconDownloadChar
+        .startNotifications()
+        .then(() => {
+          this.iconDownloadChar.addEventListener(
+            "characteristicvaluechanged",
+            onNotify,
+          );
+          return this.iconDownloadChar.readValue();
+        })
+        .catch((err) => {
+          cleanup();
+          reject(err);
+        });
+    });
   }
 }
