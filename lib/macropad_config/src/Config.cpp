@@ -131,6 +131,7 @@ ApplyResult parseAndValidate(const std::string& json, MacroConfig& outConfig) {
       slot.present = true;
       slot.label = slotObj["label"] | "";
       slot.color = slotObj["color"] | "";
+      slot.icon = slotObj["icon"] | "";  // optional - empty means no icon
 
       JsonVariantConst actionVal = slotObj["action"];
       if (!actionVal.is<JsonObjectConst>()) {
@@ -208,6 +209,9 @@ std::string serialize(const MacroConfig& config) {
       JsonObject slotObj = buttonsArr.add<JsonObject>();
       slotObj["label"] = slot.label;
       slotObj["color"] = slot.color;
+      if (!slot.icon.empty()) {
+        slotObj["icon"] = slot.icon;
+      }
 
       JsonObject actionObj = slotObj["action"].to<JsonObject>();
       switch (slot.action.type) {

@@ -45,6 +45,13 @@ struct ButtonSlot {
   std::string label;
   std::string color;  // "#rrggbb"
   ButtonAction action;
+
+  // Optional icon id (see macropad-icon-assets) referencing a 64x64 RGB565
+  // bitmap stored separately from this config. Empty means no icon - the
+  // slot renders with its color fill only, exactly as before this field
+  // existed. Not validated for existence here (see macropad-icon-assets'
+  // spec) - only its presence/absence is structural.
+  std::string icon;
 };
 
 struct Layer {

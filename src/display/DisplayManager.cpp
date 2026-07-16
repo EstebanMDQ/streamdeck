@@ -6,6 +6,9 @@
 
 #include <cstdlib>
 
+#include "assets/IconStorage.h"
+#include "macropad_icon/IconValidation.h"
+
 namespace macropad {
 
 namespace {
@@ -72,6 +75,12 @@ uint16_t parseHexColor(const std::string& hex) {
 void DisplayManager::begin() {
   tft.init();
   tft.setRotation(1);  // landscape, 320x240
+  // Paired with webapp/js/icon.js's rgbaToRgb565() packing bytes
+  // big-endian per pixel - a deliberate, documented guess pending the
+  // hardware verification in tasks.md 2.2/5.5. If icon colors come out
+  // channel-swapped, flip this to false first before touching anything
+  // else - it's the single adjustable knob for this exact mismatch.
+  tft.setSwapBytes(true);
   tft.fillScreen(TFT_BLACK);
 
   touchSpi.begin(kTouchClkPin, kTouchMisoPin, kTouchMosiPin, kTouchCsPin);
@@ -157,10 +166,26 @@ void DisplayManager::renderCurrentLayer() {
     int y = row * cellH;
 
     uint16_t color = parseHexColor(slot.color);
-    tft.fillRect(x + 2, y + 2, cellW - 4, cellH - 4, color);
-    tft.setTextColor(TFT_WHITE, color);
-    tft.setTextDatum(MC_DATUM);
-    tft.drawString(slot.label.c_str(), x + cellW / 2, y + cellH / 2, 2);
+    bool iconRendered =
+        !slot.icon.empty() && renderIconIfPresent(slot, x, y, cellW, cellH);
+
+    if (!iconRendered) {
+      tft.fillRect(x + 2, y + 2, cellW - 4, cellH - 4, color);
+      tft.setTextColor(TFT_WHITE, color);
+      tft.setTextDatum(MC_DATUM);
+      tft.drawString(slot.label.c_str(), x + cellW / 2, y + cellH / 2, 2);
+    } else {
+      // Label overlay: a small strip at the bottom of the cell, over the
+      // icon, so icon buttons remain identifiable by name (macropad-display-
+      // ui: "the label is still drawn as an overlay").
+      constexpr int kLabelStripHeight = 20;
+      int stripY = y + cellH - kLabelStripHeight - 2;
+      tft.fillRect(x + 2, stripY, cellW - 4, kLabelStripHeight, color);
+      tft.setTextColor(TFT_WHITE, color);
+      tft.setTextDatum(MC_DATUM);
+      tft.drawString(slot.label.c_str(), x + cellW / 2,
+                      stripY + kLabelStripHeight / 2, 1);
+    }
   }
 
   // Back affordance: a full-width bar along the bottom, shown only outside
@@ -172,6 +197,30 @@ void DisplayManager::renderCurrentLayer() {
     tft.drawString("< Back", kScreenWidth / 2, kGridHeight + kBackBarHeight / 2,
                    2);
   }
+}
+
+bool DisplayManager::renderIconIfPresent(const ButtonSlot& slot, int x, int y,
+                                          int cellW, int cellH) {
+  std::string bytes;
+  if (!IconStorage::load(slot.icon, bytes)) {
+    return false;  // missing or wrong-sized file - caller falls back to color
+  }
+
+  // Centered within the cell; icons are always exactly kIconWidth x
+  // kIconHeight (IconStorage::load only returns true for a correctly-sized
+  // bitmap), no scaling involved - TFT_eSPI::pushImage() is a 1:1 blit.
+  int iconX = x + (cellW - kIconWidth) / 2;
+  int iconY = y + (cellH - kIconHeight) / 2;
+
+  // NOTE: byte order between the webapp's packed RGB565 bytes and what
+  // pushImage() expects here is unverified against real hardware - see
+  // design.md's Risks section and tasks.md section 2's early hardware
+  // check. If colors come out channel-swapped during that check, TFT_eSPI's
+  // tft.setSwapBytes(true) (called once in begin(), not here) is the fix -
+  // no need to re-pack every stored icon's bytes.
+  const uint16_t* pixels = reinterpret_cast<const uint16_t*>(bytes.data());
+  tft.pushImage(iconX, iconY, kIconWidth, kIconHeight, pixels);
+  return true;
 }
 
 void DisplayManager::handleTouch(int x, int y) {

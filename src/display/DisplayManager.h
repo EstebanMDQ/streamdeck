@@ -49,6 +49,12 @@ class DisplayManager {
   void render();
   void renderIdleScreen();
   void renderCurrentLayer();
+  // Attempts to render slot's icon (if set) filling the given cell; returns
+  // false if the slot has no icon, or the icon file is missing/invalid, in
+  // which case the caller falls back to the color fill (macropad-display-ui:
+  // "falls back to rendering that slot with its background color").
+  bool renderIconIfPresent(const ButtonSlot& slot, int x, int y, int cellW,
+                            int cellH);
   void handleTouch(int x, int y);
   void navigateTo(const std::string& layerId);
   void navigateBack();
