@@ -149,21 +149,12 @@ ConfigDumpCallbacks gConfigDumpCallbacks;
 
 }  // namespace
 
-void ConfigService::begin() {
-  // This library's BLEDevice has no public getServer() accessor (confirmed
-  // by building against the actual pinned framework version, which differs
-  // here from the upstream GitHub master branch) - so instead of trying to
-  // reuse HidService/BleKeyboard's internal BLEServer, ConfigService gets
-  // its own independent one. BLEDevice::createServer() is safe to call more
-  // than once (each call registers a new GATT "application" with its own
-  // incrementing app ID - confirmed in BLEDevice.cpp) - both servers' GATT
-  // services end up visible over the same physical BLE connection, and
-  // BLEDevice::getAdvertising() is shared/device-level, not per-server, so
-  // one advertisement still carries both services' UUIDs.
-  //
-  // This still must run after HidService::begin(), because that's what
-  // calls BLEDevice::init() - required once before any createServer() call.
-  BLEServer* server = BLEDevice::createServer();
+void ConfigService::begin(BLEServer* server) {
+  // Attaches to the BLEServer HidService already created - see
+  // ConfigService.h for why this must NOT create its own second server
+  // (BLEDevice routes all GATT events through one static pointer that a
+  // second createServer() call would overwrite, silently breaking the
+  // first server).
   gConfigServer = server;
 
   BLEService* service = server->createService(kServiceUuid);
@@ -186,13 +177,17 @@ void ConfigService::begin() {
   service->start();
   publishStatus(ApplyResult::None);
 
-  // Advertise this service's UUID alongside the HID service HidService is
-  // already advertising. BLEDevice::getAdvertising() is a single
-  // device-level advertiser shared across every BLEServer instance, so this
-  // adds to the same advertisement HidService/BleKeyboard already started,
-  // rather than starting a second competing one.
-  BLEDevice::getAdvertising()->addServiceUUID(kServiceUuid);
-
+  // Deliberately NOT calling BLEDevice::getAdvertising()->addServiceUUID()
+  // here. Checked against the actual installed BLEAdvertising::start()
+  // source: every service UUID it advertises gets expanded to a full
+  // 128-bit (16-byte) entry, even 16-bit ones like HID's 0x1812. HID's UUID
+  // (16 bytes) plus this service's own 128-bit UUID (16 bytes) is 32 bytes
+  // of service-UUID data alone, already over the 31-byte cap on a single
+  // legacy BLE advertising packet, before Flags/Appearance/name are even
+  // added - so this service's UUID structurally cannot coexist with HID's
+  // in the advertisement. The webapp instead finds the device by name
+  // (see webapp/js/ble-sync.js's `namePrefix` filter), which HID's
+  // advertising already reliably includes.
   gLastConnectedCount = server->getConnectedCount();
 }
 

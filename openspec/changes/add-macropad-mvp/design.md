@@ -90,11 +90,20 @@ be a launcher or a folder, and there's always one consistent way back.
   the root layer. Rejected - it silently reduces nested layers to 5 usable buttons,
   which is surprising and inconsistent between root and non-root layers.
 
-### BLE: two custom services, both required
-1. **HID service**: standard BLE HID-over-GATT profile via an existing library
-   (`ESP32-BLE-Keyboard`/`ESP32-BLE-Combo`, or ESP-IDF's `esp_hidd` if the Arduino
-   library proves too limited for consumer-control keys). Pairs the device as a
-   keyboard/media-control peripheral.
+**Revised after real-device testing**: the first implementation used a small
+32x32px corner square, which testing on real hardware found very hard to hit
+reliably - a small target compounded by resistive touch being least accurate
+near corners, and touch calibration constants that are still placeholder
+values (not yet tuned to the physical unit). Replaced with a full-width bar
+along the bottom of the screen (`kBackBarHeight = 40`), reserved consistently
+across every layer (not just non-root ones) so button cell sizing never
+changes depending on which layer is shown.
+
+### BLE: two custom services, both required, sharing one BLEServer
+1. **HID service**: standard BLE HID-over-GATT profile, implemented directly
+   against this project's framework's own `BLEHIDDevice`/`BLEServer` APIs (see
+   "Own BLE HID implementation" below for why, not a third-party wrapper
+   library). Pairs the device as a keyboard/consumer-control peripheral.
 2. **Config service** (custom UUID): a small application-level chunked-transfer
    protocol over 3 characteristics:
    - `ConfigTransfer` (write **with response**): client sends chunks, each prefixed
@@ -122,6 +131,85 @@ be a launcher or a folder, and there's always one consistent way back.
      Bluetooth API, so an explicit length/offset framing that both sides implement
      identically is more predictable than depending on stack-level chunking.
 
+**Discovered during hardware bring-up**: the config service's UUID cannot also
+be advertised in the BLE advertising packet alongside the HID service's UUID.
+Checked against the actual installed `BLEAdvertising::start()` source: every
+advertised service UUID is expanded to a full 128-bit (16-byte) entry
+regardless of its original width, so HID's UUID (16 bytes once expanded) plus
+this service's own 128-bit UUID (16 bytes) is 32 bytes of service-UUID data
+alone - already over the 31-byte cap on a single legacy BLE advertising
+packet, before Flags/Appearance/name are added. `ConfigService::begin()`
+intentionally does not call `addServiceUUID()`/re-advertise for its own
+service because of this.
+
+The webapp initially filtered Web Bluetooth's device chooser by advertised
+**name** (`namePrefix: "Streamdeck"`) instead, since HID's advertising
+reliably includes the name. That, too, turned out to be unreliable in
+practice: during hardware bring-up this device's name showed up stale
+("CYD MIDI", a name from earlier unrelated testing) in *multiple*
+independent tools against the same physical device - macOS's Bluetooth
+Settings, a raw `bleak`/CoreBluetooth scan, and apparently Chrome's own Web
+Bluetooth chooser too - strongly suggesting host-OS-level BLE identity
+caching (keyed by the device's stable MAC-derived address) rather than
+anything wrong with the advertisement itself. Since no filter proved
+reliable, `connect()` now uses `acceptAllDevices: true` - the chooser shows
+every nearby device and the user picks theirs visually (already proven to
+work: this is exactly how pairing was completed via macOS's own Bluetooth
+Settings once "CYD MIDI" was recognized as the same device by its
+HID-service-UUID advertisement, not by name) - and still lists the config
+service as `optionalServices` so it's reachable once connected regardless
+of what name/UUIDs the chooser displayed.
+
+### Own BLE HID implementation, not a third-party wrapper library
+The first hardware build used T-vK's `ESP32-BLE-Keyboard` library for the HID
+service, with `ConfigService` creating its own second `BLEServer` for the
+config service (reasoned at the time to be safe, since `BLEServer::createApp()`
+registers each server as an independent GATT application). On real hardware,
+this device advertised and showed a working splash screen, but never became
+pairable/connectable. Reading `BLEDevice.cpp` traced this to a real bug: this
+framework's `BLEDevice::gattServerEventHandler` (the single global dispatcher
+for every GATT server event - connect, disconnect, characteristic writes)
+routes exclusively through one static `BLEDevice::m_pServer` pointer, which
+`BLEDevice::createServer()` **overwrites** on every call. Once `ConfigService`
+created its own server, `BLEDevice::m_pServer` pointed at it instead of the
+original HID server - so the HID server's `onConnect`/`onDisconnect`
+(and its `m_connectedCount`) silently stopped updating entirely, regardless of
+what was actually happening at the radio level. There can only be one
+"live" `BLEServer` in this framework; a second one doesn't run alongside the
+first, it breaks it.
+
+Fixing this properly requires both services to attach to the *same* server.
+`ESP32-BLE-Keyboard` doesn't expose the `BLEServer*` it creates (no public
+accessor, and it ships with no LICENSE file, so patching and vendoring a
+modified copy was intentionally avoided rather than risk an unclear license
+in this repo). Instead, `HidService` now implements the BLE HID keyboard and
+consumer-control profile directly against this project's framework's own
+`BLEHIDDevice`/`BLEServer` classes (Apache/MIT-licensed, already a direct
+dependency via ConfigService) - written fresh against the public USB-IF HID
+Usage Tables, not copied from any third-party library. `HidService` owns the
+one `BLEServer` for the whole device and exposes it via `getServer()`;
+`ConfigService::begin(server)` now takes that same server and attaches its
+service to it, rather than creating its own.
+
+**Second bug found on the very next flash**: the device then crash-looped
+(visible as the idle screen "flashing" - actually a repeated
+panic/reboot cycle, not a BLE issue at all). Serial output showed
+`Guru Meditation Error: Core 1 panic'ed (LoadProhibited)` on every boot;
+decoding the crash backtrace against the build's own `firmware.elf` with
+`xtensa-esp32-elf-addr2line` pointed exactly at
+`HidService::begin()`'s `gHid->manufacturer("DIY")` call. `BLEHIDDevice`'s
+string-argument `manufacturer(std::string)` overload only writes through
+`m_manufacturerCharacteristic` - it never creates it. That characteristic is
+only created as a side effect of calling the *other*, no-argument
+`manufacturer()` getter first. Calling the setter directly dereferences an
+uninitialized pointer. Fixed by calling `gHid->manufacturer()->setValue(...)`
+instead. Also switched the security mode from `ESP_LE_AUTH_REQ_SC_MITM_BOND`
+to `ESP_LE_AUTH_REQ_SC_BOND` (Secure Connections + Bonding, no MITM) since
+this device has no passkey-entry UI to satisfy an MITM requirement -
+unrelated to the crash, but worth fixing at the same time since it could
+have caused a similar-looking connect/disconnect loop once actual pairing
+was attempted.
+
 ### Button press feedback and config swaps mid-navigation
 Any press on a non-empty slot gives brief visual feedback (e.g. a short
 highlight/invert) regardless of whether the underlying action was actually delivered
@@ -131,6 +219,16 @@ exist for one-way HID reports anyway. Separately, if a new configuration is appl
 while the currently displayed layer isn't the root layer, and that layer id doesn't
 exist in the new configuration, the display resets to the new configuration's root
 layer rather than showing a stale or undefined view.
+
+### Idle screen while no BLE HID host is connected
+Added after real hardware use surfaced that a user has no visual indicator of
+whether the device is paired/connected or just sitting there advertising. The
+display shows a simple idle/splash screen (device name + "waiting to
+connect") whenever `HidService::isConnected()` is false, and switches to the
+normal button grid once a host connects - reverting to the idle screen again
+on disconnect. This only reflects the BLE HID connection (the one a user
+pairs with day-to-day), not the separate, occasional config-service
+connection from the webapp.
 
 ### Storage: LittleFS, single file, atomic write
 Config lives at `/config.json` in LittleFS. Writes go to `/config.json.tmp` then

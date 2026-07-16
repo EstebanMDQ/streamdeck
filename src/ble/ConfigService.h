@@ -4,6 +4,8 @@
 
 #include "macropad_config/Config.h"
 
+class BLEServer;
+
 // Custom BLE GATT service exposing ConfigTransfer/ConfigDump/ConfigStatus.
 // Implements:
 //   openspec/changes/add-macropad-mvp/specs/macropad-ble-config-protocol/spec.md
@@ -11,17 +13,16 @@
 // validation logic it calls into IS unit tested, in macropad_transfer and
 // macropad_config respectively).
 //
-// IMPORTANT: must be started AFTER HidService::begin(), because that's what
-// calls BLEDevice::init() - required once before ConfigService can create
-// its own BLEServer via BLEDevice::createServer(). ConfigService does NOT
-// try to reuse HidService/BleKeyboard's BLEServer (this library's
-// BLEDevice has no public accessor for an already-created server) - it
-// creates its own second one instead, which is supported (each
-// createServer() call registers an independent GATT application) and
-// avoids the two modules ever needing to share a BLEServerCallbacks slot.
-// Both servers' services still advertise together, since
-// BLEDevice::getAdvertising() is a single device-level advertiser shared
-// across every server instance.
+// IMPORTANT: attaches its service to the BLEServer HidService already
+// created (via begin(server)), rather than creating its own. This
+// framework's BLEDevice routes every GATT server event through a single
+// static pointer that the most recent BLEDevice::createServer() call
+// overwrites - a second independent server would silently stop receiving
+// connect/disconnect/write events (confirmed by reading BLEDevice.cpp
+// during hardware bring-up: a device that had a splash screen but never
+// showed as connectable turned out to be exactly this). One real server,
+// shared by both services, is the only architecture this framework
+// actually supports correctly.
 
 namespace macropad {
 
@@ -29,7 +30,9 @@ using ConfigAppliedCallback = std::function<void(const MacroConfig&)>;
 
 class ConfigService {
  public:
-  void begin();
+  // `server` must be the same BLEServer HidService::begin() created
+  // (HidService::getServer()) - see the note above for why.
+  void begin(BLEServer* server);
 
   // Invoked with the newly applied configuration whenever a BLE push is
   // validated and accepted, so main.cpp can forward it to DisplayManager.

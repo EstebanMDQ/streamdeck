@@ -1,12 +1,15 @@
 ## ADDED Requirements
 
 ### Requirement: Webapp connects to a device via Web Bluetooth
-The webapp SHALL let a user initiate a Web Bluetooth connection scoped to the
-device's config service UUID, prompting the browser's device chooser.
+The webapp SHALL let a user initiate a Web Bluetooth connection, prompting
+the browser's device chooser with no service-UUID or name filter applied
+(see design.md's note on why filtering proved unreliable during hardware
+bring-up), and SHALL request the config service as an optional service so
+it can still be accessed once connected.
 
 #### Scenario: User connects to a nearby device
 - **WHEN** a user clicks "Connect" and selects their device from the browser's Bluetooth device chooser
-- **THEN** the webapp establishes a GATT connection to that device's config service
+- **THEN** the webapp establishes a GATT connection to that device and can access its config service
 
 ### Requirement: Webapp pulls the current configuration before editing
 Upon connecting, the webapp SHALL read the device's current configuration via the

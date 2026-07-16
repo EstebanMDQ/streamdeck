@@ -38,8 +38,16 @@ export class DeviceConnection {
   }
 
   async connect() {
+    // Not filtering by name or service UUID here: the device's advertised
+    // name has repeatedly shown up stale/cached in various OS Bluetooth
+    // stacks during hardware bring-up (see design.md), so any filter risks
+    // silently excluding the real device from the chooser instead of
+    // failing loudly. Showing every nearby device and letting the user
+    // pick visually is more robust - the config service stays reachable
+    // post-connection via optionalServices regardless of what name/UUIDs
+    // the chooser displayed it under.
     this.device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SERVICE_UUID] }],
+      acceptAllDevices: true,
       optionalServices: [SERVICE_UUID],
     });
     this.server = await this.device.gatt.connect();

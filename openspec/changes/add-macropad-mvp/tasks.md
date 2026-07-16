@@ -42,7 +42,8 @@
 - [x] 4.4 Implement the back affordance (hidden on root layer, shown otherwise, navigates to parent layer)
 - [x] 4.5 Implement brief visual feedback on any non-empty slot press, independent of whether the action was actually delivered
 - [x] 4.6 Implement reset-to-root when an applied configuration no longer contains the currently displayed layer
-- [ ] 4.7 Verify on-device: navigate a multi-level layer tree using only touch and confirm back returns to the correct parent each time
+- [x] 4.7 Implement an idle/splash screen shown while no BLE HID host is connected, switching to the button grid on connect and back to idle on disconnect
+- [x] 4.8 Verify on-device: navigate a multi-level layer tree using only touch and confirm back returns to the correct parent each time (verified on real ESP32-2432S028R hardware - root -> "logic" layer -> back, using the full-width back bar)
 
 ## 5. Firmware: BLE HID actions
 
@@ -50,7 +51,7 @@
 - [x] 5.2 Emit the configured keyboard report when a `key`-type button is pressed
 - [x] 5.3 Emit the configured consumer-control report when a `media`-type button is pressed
 - [x] 5.4 Confirm `layer`-type button presses never emit a HID report
-- [ ] 5.5 Verify against a real host (macOS/Windows/Linux) that key and media presses arrive correctly over BLE
+- [x] 5.5 Verify against a real host (macOS/Windows/Linux) that key and media presses arrive correctly over BLE (verified on macOS: paired and recognized as a keyboard, Play/Pause and Mute media keys confirmed, and configured keystrokes for DAW transport controls confirmed)
 
 ## 6. Firmware: BLE config protocol
 
@@ -59,8 +60,8 @@
 - [x] 6.3 Implement single-in-flight-transfer handling: discard the partial buffer on disconnect, on a new transfer starting, or after ~15s of inter-chunk inactivity
 - [x] 6.4 Implement chunked read/notify of the current config on `ConfigDump` using the same framing
 - [x] 6.5 Implement `ConfigStatus` reporting firmware version, supported schemaVersion, and `lastApplyResult`, updating and notifying it once a transfer finishes validation
-- [x] 6.6 Verify with a small test payload larger than one BLE MTU that multi-chunk transfer reassembles correctly in both directions (covered by native + webapp unit tests of the framing logic; not yet exercised over a real BLE radio - see 6.6 note below)
-- [x] 6.7 Verify `lastApplyResult` reflects the correct outcome for an accepted push and for each rejection reason (invalid JSON, unsupported schema, structural mismatch) (covered by native unit tests of `parseAndValidate`, which `lastApplyResult` maps 1:1 from; not yet exercised over a real BLE push)
+- [x] 6.6 Verify with a small test payload larger than one BLE MTU that multi-chunk transfer reassembles correctly in both directions (covered by native + webapp unit tests of the framing logic, and confirmed over a real BLE radio: the webapp successfully pushed multi-layer/multi-button configs to the physical device)
+- [x] 6.7 Verify `lastApplyResult` reflects the correct outcome for an accepted push and for each rejection reason (invalid JSON, unsupported schema, structural mismatch) (covered by native unit tests of `parseAndValidate`; accepted-push path confirmed live against the real device via the webapp)
 - [x] 6.8 Add native unit tests for the chunk-reassembly buffer: in-order multi-chunk reassembly, a new transfer discarding a stale partial buffer, and inactivity-timeout discard
 
 ## 7. Webapp: layer editor
@@ -81,7 +82,7 @@
 - [x] 8.4 Implement `ConfigStatus` schema-version check before push, warning on mismatch
 - [x] 8.5 Implement post-push confirmation: after all chunks are acknowledged, read/subscribe to `ConfigStatus.lastApplyResult` and surface success or the specific rejection reason to the user
 - [x] 8.6 Implement the unsupported-browser message when `navigator.bluetooth` is unavailable
-- [ ] 8.7 Verify end-to-end: edit a layer tree in the webapp, push to a real device, and confirm the device's display and HID behavior match what was configured
+- [x] 8.7 Verify end-to-end: edit a layer tree in the webapp, push to a real device, and confirm the device's display and HID behavior match what was configured (verified: root layer with media buttons + a "logic" sub-layer of transport keystrokes, pushed from the webapp and working correctly on the physical device)
 
 ## 9. Firmware release packaging
 

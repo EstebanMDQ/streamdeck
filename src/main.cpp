@@ -16,6 +16,7 @@ macropad::DisplayManager displayManager;
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("Streamdeck CYD firmware booting...");
 
   bool fsOk = macropad::ConfigStorage::begin();
   if (!fsOk) {
@@ -29,11 +30,12 @@ void setup() {
     hidService.sendAction(action);
   });
 
-  // HidService must start first: it creates the shared BLEServer that
-  // ConfigService attaches its custom service to (see HidService.h/
-  // ConfigService.h for why).
+  // HidService must start first: ConfigService attaches its service to the
+  // SAME BLEServer HidService creates, rather than creating a second one
+  // (see HidService.h/ConfigService.h for why that's required, not just
+  // preferred).
   hidService.begin("Streamdeck CYD");
-  configService.begin();
+  configService.begin(hidService.getServer());
   configService.setConfigAppliedCallback(
       [](const macropad::MacroConfig& newConfig) {
         displayManager.setConfig(newConfig);
@@ -41,6 +43,7 @@ void setup() {
 }
 
 void loop() {
+  displayManager.setHidConnected(hidService.isConnected());
   displayManager.loop();
   configService.loop();
 }

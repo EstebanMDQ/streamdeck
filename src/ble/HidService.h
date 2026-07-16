@@ -4,18 +4,23 @@
 
 #include "macropad_config/Config.h"
 
-// BLE HID keyboard/consumer-control peripheral. Implements:
+class BLEServer;
+
+// BLE HID keyboard/consumer-control peripheral, implemented directly
+// against this project's framework's own BLEHIDDevice/BLEServer APIs
+// (Apache/MIT-licensed, part of arduino-esp32) rather than a third-party
+// wrapper library - see design.md's "Own BLE HID implementation" decision
+// for why. Implements:
 //   openspec/changes/add-macropad-mvp/specs/macropad-ble-hid/spec.md
-// Wraps T-vK's ESP32-BLE-Keyboard library. ESP32-only - not part of the
-// native test build.
+// ESP32-only - not part of the native test build.
 //
-// IMPORTANT for whoever wires ConfigService (see ConfigService.h): this
-// class calls BLEDevice::init() (via BleKeyboard::begin()) exactly once.
-// ConfigService::begin() must run AFTER this, since it needs BLEDevice::init()
-// to have already happened before it can create its own second BLEServer.
-// ConfigService does not depend on or reuse BleKeyboard's internal server -
-// see ConfigService.h for why (this framework version's BLEDevice has no
-// public accessor for an already-created server).
+// Owns the device's one and only BLEServer. ConfigService attaches its own
+// service to THIS server (via getServer()) instead of creating a second
+// one - creating a second BLEServer would silently break this one, since
+// this framework's BLEDevice routes every GATT server event through a
+// single static pointer that the most recent BLEDevice::createServer()
+// call overwrites (confirmed by reading BLEDevice.cpp during hardware
+// bring-up - see design.md).
 
 namespace macropad {
 
@@ -30,6 +35,10 @@ class HidService {
   // connected". `layer`-type actions are never passed here; DisplayManager
   // handles those locally.
   void sendAction(const ButtonAction& action);
+
+  // The single BLEServer this service creates and owns. ConfigService
+  // attaches its own service to this same object.
+  BLEServer* getServer() const;
 };
 
 }  // namespace macropad

@@ -1,6 +1,7 @@
 {
   "name": "streamdeck-webapp",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "test": "node --test"

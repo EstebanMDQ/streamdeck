@@ -32,11 +32,22 @@ class DisplayManager {
   // Polls touch input and (re)renders as needed. Call from the main loop.
   void loop();
 
+  // Reflects the BLE HID connection state (not the separate, occasional
+  // config-service connection from the webapp). While disconnected, an idle
+  // screen is shown instead of the button grid - see
+  // macropad-display-ui's "An idle screen is shown while no BLE HID host is
+  // connected" requirement. Call whenever HidService's connection state may
+  // have changed (e.g. every main loop iteration); a no-op if the state
+  // hasn't actually changed.
+  void setHidConnected(bool connected);
+
   void setActionCallback(ActionCallback callback) {
     actionCallback_ = callback;
   }
 
  private:
+  void render();
+  void renderIdleScreen();
   void renderCurrentLayer();
   void handleTouch(int x, int y);
   void navigateTo(const std::string& layerId);
@@ -47,6 +58,7 @@ class DisplayManager {
   std::vector<std::string> navigationStack_;
   ActionCallback actionCallback_;
   bool needsRedraw_ = true;
+  bool hidConnected_ = false;
 };
 
 }  // namespace macropad

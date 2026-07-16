@@ -14,7 +14,14 @@ constexpr int kScreenWidth = 320;   // landscape (rotation 1)
 constexpr int kScreenHeight = 240;
 constexpr int kCols = 3;
 constexpr int kRows = 2;
-constexpr int kBackAffordanceSize = 32;
+// Full-width bar reserved at the bottom of the screen for the back
+// affordance - much easier to hit reliably than a small corner square,
+// especially on resistive touch (corners tend to be the least accurate
+// zone) with not-yet-calibrated touch mapping. Reserved consistently across
+// every layer (not just non-root ones) so button sizing never changes
+// depending on which layer is shown.
+constexpr int kBackBarHeight = 40;
+constexpr int kGridHeight = kScreenHeight - kBackBarHeight;
 constexpr uint32_t kFeedbackFlashMs = 120;
 
 // XPT2046 touch controller wiring: a second SPI bus, separate from the
@@ -86,16 +93,44 @@ void DisplayManager::setConfig(const MacroConfig& config) {
   needsRedraw_ = true;
 }
 
+void DisplayManager::setHidConnected(bool connected) {
+  if (connected == hidConnected_) {
+    return;  // no-op if the connection state hasn't actually changed
+  }
+  hidConnected_ = connected;
+  needsRedraw_ = true;
+}
+
 void DisplayManager::loop() {
   if (needsRedraw_) {
-    renderCurrentLayer();
+    render();
     needsRedraw_ = false;
   }
 
-  if (touch.tirqTouched() && touch.touched()) {
+  // Touches are only meaningful once the button grid is showing - the idle
+  // screen has nothing to press.
+  if (hidConnected_ && touch.tirqTouched() && touch.touched()) {
     TS_Point p = touch.getPoint();
     handleTouch(mapTouchX(p.x), mapTouchY(p.y));
   }
+}
+
+void DisplayManager::render() {
+  if (hidConnected_) {
+    renderCurrentLayer();
+  } else {
+    renderIdleScreen();
+  }
+}
+
+void DisplayManager::renderIdleScreen() {
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("Streamdeck CYD", kScreenWidth / 2, kScreenHeight / 2 - 12, 4);
+  tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  tft.drawString("Waiting for Bluetooth connection...", kScreenWidth / 2,
+                  kScreenHeight / 2 + 16, 2);
 }
 
 void DisplayManager::renderCurrentLayer() {
@@ -110,7 +145,7 @@ void DisplayManager::renderCurrentLayer() {
   }
 
   int cellW = kScreenWidth / kCols;
-  int cellH = kScreenHeight / kRows;
+  int cellH = kGridHeight / kRows;
   for (int i = 0; i < kButtonsPerLayer; ++i) {
     const ButtonSlot& slot = layer->buttons[i];
     if (!slot.present) {
@@ -128,24 +163,25 @@ void DisplayManager::renderCurrentLayer() {
     tft.drawString(slot.label.c_str(), x + cellW / 2, y + cellH / 2, 2);
   }
 
-  // Back affordance, shown only outside the root layer.
+  // Back affordance: a full-width bar along the bottom, shown only outside
+  // the root layer.
   if (navigationStack_.size() > 1) {
-    tft.fillRect(0, 0, kBackAffordanceSize, kBackAffordanceSize, TFT_DARKGREY);
+    tft.fillRect(0, kGridHeight, kScreenWidth, kBackBarHeight, TFT_DARKGREY);
     tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
     tft.setTextDatum(MC_DATUM);
-    tft.drawString("<", kBackAffordanceSize / 2, kBackAffordanceSize / 2, 2);
+    tft.drawString("< Back", kScreenWidth / 2, kGridHeight + kBackBarHeight / 2,
+                   2);
   }
 }
 
 void DisplayManager::handleTouch(int x, int y) {
-  if (navigationStack_.size() > 1 && x < kBackAffordanceSize &&
-      y < kBackAffordanceSize) {
+  if (navigationStack_.size() > 1 && y >= kGridHeight) {
     navigateBack();
     return;
   }
 
   int cellW = kScreenWidth / kCols;
-  int cellH = kScreenHeight / kRows;
+  int cellH = kGridHeight / kRows;
   int col = x / cellW;
   int row = y / cellH;
   if (col >= kCols || row >= kRows) {
@@ -201,7 +237,7 @@ void DisplayManager::navigateBack() {
 
 void DisplayManager::flashSlotFeedback(int slotIndex) {
   int cellW = kScreenWidth / kCols;
-  int cellH = kScreenHeight / kRows;
+  int cellH = kGridHeight / kRows;
   int col = slotIndex % kCols;
   int row = slotIndex / kCols;
   int x = col * cellW;

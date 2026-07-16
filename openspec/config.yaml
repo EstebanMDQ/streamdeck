@@ -13,9 +13,15 @@ context: |
   variants are out of scope unless stated otherwise.
 
   Firmware tech stack: PlatformIO + Arduino framework, TFT_eSPI for display,
-  XPT2046 touch driver, an ESP32 BLE HID keyboard/media-key library
-  (e.g. ESP32-BLE-Keyboard/ESP32-BLE-Combo or ESP-IDF's esp_hidd), LittleFS
-  for on-device config persistence. Firmware builds to a standalone .bin
+  XPT2046 touch driver, LittleFS for on-device config persistence. BLE HID
+  (keyboard + consumer-control) is implemented directly against the
+  framework's own BLEHIDDevice/BLEServer classes (src/ble/HidService.cpp),
+  not a third-party wrapper library - HidService owns the device's single
+  BLEServer, and ConfigService attaches its own service to that same server
+  rather than creating a second one (see design.md's "Own BLE HID
+  implementation" decision for a real bug this avoids: this framework
+  routes all GATT server events through one static pointer that a second
+  BLEServer would silently steal). Firmware builds to a standalone .bin
   compatible with bmorcelli Launcher (no shared runtime/SDK dependency on
   Launcher itself - it just boots whatever valid ESP32 image is installed).
 

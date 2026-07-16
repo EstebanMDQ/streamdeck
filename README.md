@@ -118,3 +118,7 @@ needs a real device nearby to actually connect.
   library defaults, not yet verified against physical hardware - see the
   comments in `src/display/DisplayManager.cpp` and
   `src/ble/ConfigService.cpp`, and `tasks.md`'s hardware-verification tasks.
+
+## License
+
+MIT - see [LICENSE](LICENSE).

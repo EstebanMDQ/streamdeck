@@ -74,3 +74,21 @@ show the stale layer.
 #### Scenario: Active nested layer removed by a config push
 - **WHEN** a new configuration is applied while a non-root layer is displayed, and that layer's id is absent from the new configuration
 - **THEN** the display switches to the new configuration's root layer
+
+### Requirement: An idle screen is shown while no BLE HID host is connected
+The display SHALL show an idle/splash screen instead of the button grid whenever no
+BLE HID host is connected, and SHALL switch to showing the active layer's button grid
+once a host connects. If the host later disconnects, the display SHALL return to the
+idle screen.
+
+#### Scenario: Idle screen shown before any host has connected
+- **WHEN** the device is powered on and no BLE HID host is connected
+- **THEN** the display shows the idle screen instead of the button grid
+
+#### Scenario: Button grid shown once a host connects
+- **WHEN** a BLE HID host connects
+- **THEN** the display switches from the idle screen to the active layer's button grid
+
+#### Scenario: Idle screen shown again after a disconnect
+- **WHEN** a previously connected BLE HID host disconnects
+- **THEN** the display switches from the button grid back to the idle screen
