@@ -289,7 +289,11 @@ void ConfigService::begin(BLEServer* server) {
   // first server).
   gConfigServer = server;
 
-  BLEService* service = server->createService(kServiceUuid);
+  // Default reservation (15 handles) is too small for our 7 characteristics
+  // (3 plain + 4 with BLE2902 descriptors = 19 handles needed); the overflow
+  // fails silently in the underlying BLE stack, dropping characteristics
+  // unpredictably. Reserve generous headroom above the 19 actually needed.
+  BLEService* service = server->createService(BLEUUID(kServiceUuid), 30);
 
   gConfigTransferChar = service->createCharacteristic(
       kConfigTransferUuid, BLECharacteristic::PROPERTY_WRITE);
